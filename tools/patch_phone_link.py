@@ -112,8 +112,10 @@ def main() -> None:
             n500Remote.rotatePairingCode();
         }
         String pairingHint = n500Remote.isPaired()
-                ? "\\nPhone remembered! Open Glass TV Remote on your home Wi-Fi to reconnect automatically."
-                + "\\nTo pair another phone, choose Disconnect Phone and reopen Phone Link."
+                ? (N500RemoteServer.hasRememberedPhone(this)
+                    ? "\\nPhone remembered! Open Glass TV Remote on your home Wi-Fi to reconnect automatically."
+                    : "\\nPhone connected for this session; secure memory unavailable on projector.")
+                  + "\\nTo pair another phone, choose Disconnect Phone and reopen Phone Link."
                 : "\\nOne-time pairing PIN: " + n500Remote.pairingCode()
                 + "\\nExpires after 2 minutes";
         String info = "Phone and N500 must be on the same private Wi-Fi."
