@@ -44,11 +44,13 @@ public final class N500RemoteServer {
     private volatile String token;
     private volatile boolean paired;
     private ServerSocket listener;
+    private final android.content.Context appContext;
     private Thread acceptThread;
 
     public N500RemoteServer(MainActivity activity, Handler handler) {
         target = new WeakReference<>(activity);
         main = handler;
+        appContext = activity.getApplicationContext();
     }
 
     public synchronized boolean start() {
@@ -57,7 +59,16 @@ public final class N500RemoteServer {
             listener = new ServerSocket(PORT);
             listener.setReuseAddress(true);
             running = true;
-            rotatePairingCode();
+            // Only an explicitly paired user gets automatic session restore.
+            String saved = N500PairingStore.readToken(appContext);
+            if (saved != null) {
+                token = saved;
+                paired = true;
+                pin = null;
+                pinExpiresAt = 0;
+            } else {
+                rotatePairingCode();
+            }
             acceptThread = new Thread(() -> {
                 while (running) {
                     try {
@@ -95,7 +106,8 @@ public final class N500RemoteServer {
     }
 
     public synchronized String rotatePairingCode() {
-        // Revokes all existing clients and produces short-lived code.
+        // Explicitly requesting a new PIN revokes the remembered phone.
+        N500PairingStore.clear(appContext);
         token = null;
         paired = false;
         pin = String.format(Locale.ROOT, "%06d", random.nextInt(1_000_000));
@@ -104,6 +116,13 @@ public final class N500RemoteServer {
     }
 
     public String pairingCode() { return pin; }
+    public static boolean hasRememberedPhone(android.content.Context context) {
+        return N500PairingStore.hasPairing(context);
+    }
+    public synchronized void forgetPhone() {
+        N500PairingStore.clear(appContext);
+        stop();
+    }
     public String address() {
         return WallpaperUploadServer.getLocalIpAddress() + ":" + PORT;
     }
@@ -206,7 +225,17 @@ public final class N500RemoteServer {
                 random.nextBytes(secret);
                 StringBuilder hex=new StringBuilder();
                 for (byte b:secret) hex.append(String.format(Locale.ROOT,"%02x",b & 0xff));
-                token=hex.toString();
+                String issued = hex.toString();
+                // Do not acknowledge pairing unless credentials are securely stored.
+                // An old phone can be deliberately forgotten at any time on the TV.
+                try {
+                    N500PairingStore.save(appContext, "", issued);
+                } catch (Exception error) {
+                    Log.w(TAG, "Could not securely save pairing", error);
+                    json(out,503,"Projector could not save pairing securely");
+                    return;
+                }
+                token=issued;
                 paired=true;
                 pin=null;
                 // Close the on-projector PIN dialog once a phone is paired.
