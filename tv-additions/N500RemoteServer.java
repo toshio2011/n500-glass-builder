@@ -209,6 +209,12 @@ public final class N500RemoteServer {
                 token=hex.toString();
                 paired=true;
                 pin=null;
+                // Close the on-projector PIN dialog once a phone is paired.
+                // Leaving it open steals Activity window focus, rejecting D-pad keys.
+                main.post(() -> {
+                    MainActivity current = target.get();
+                    if (current != null) current.n500PairingCompleted();
+                });
                 JSONObject response=new JSONObject();
                 response.put("token",token);
                 response.put("message","Paired with Glass TV N500 Preview");
@@ -224,6 +230,8 @@ public final class N500RemoteServer {
                 j.put("version","0.1-dev");
                 j.put("live",N500CaptureService.isActive());
                 j.put("remoteScope","launcher-only");
+                MainActivity preview = target.get();
+                j.put("previewFocused", preview != null && preview.hasWindowFocus());
                 reply(out,200,"application/json; charset=UTF-8",
                         j.toString().getBytes(StandardCharsets.UTF_8));
             } else if ("POST".equals(method) && "/v1/key".equals(path)) {
@@ -254,7 +262,7 @@ public final class N500RemoteServer {
                     int code=keyCode(key);
                     if (code<0) { json(out,400,"Unsupported remote key"); return; }
                     if (!activity.hasWindowFocus()) {
-                        json(out,409,"Open Glass TV Preview on the projector first (global remote not available)");
+                        json(out,409,"Open Glass TV Preview on N500 and close its pairing popup. This first remote can only control Preview.");
                         return;
                     }
                     main.post(() -> {
