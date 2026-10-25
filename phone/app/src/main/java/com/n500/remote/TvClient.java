@@ -13,7 +13,7 @@ import java.nio.charset.StandardCharsets;
 final class TvClient {
     private final String host;
     private final int port;
-    private String token = "";
+    private volatile String token = "";
     TvClient(String endpoint) throws Exception {
         String input = endpoint.trim();
         if (!input.matches("[0-9.]+(:[0-9]{2,5})?")) throw new IllegalArgumentException("Enter projector IP, e.g. 192.168.100.243:8765");
@@ -28,6 +28,15 @@ final class TvClient {
         boolean local = first == 10 || first == 192 && second == 168 || first == 172 && second >= 16 && second <= 31;
         if (!local) throw new IllegalArgumentException("Only private home Wi-Fi IPv4 addresses are accepted");
     }
+    /** Rehydrate ONLY a token decrypted from the AndroidKeyStore. No new PIN needed. */
+    static TvClient restore(String endpoint, String savedToken) throws Exception {
+        if(savedToken==null || !savedToken.matches("[a-fA-F0-9]{64}"))
+            throw new IllegalArgumentException("Invalid stored token");
+        TvClient client = new TvClient(endpoint);
+        client.token = savedToken;
+        return client;
+    }
+    String pairingToken() { return token; }
     String address() { return host + ":" + port; }
     boolean isPaired() { return token.length() > 0; }
     void clearPairing() { token = ""; }
