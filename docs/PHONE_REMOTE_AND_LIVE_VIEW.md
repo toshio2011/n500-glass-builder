@@ -1,3 +1,17 @@
+## Remember My Projector — Preview v0.6 / Phone v0.3 (25 October 2026)
+
+APK pair release: https://github.com/toshio2011/n500-glass-builder/releases/tag/n500-v0.6-remembered-phone-preview
+
+- The Android phone app securely stores the paired N500 IP and encrypted pairing token using AndroidKeyStore AES-GCM. On every foreground app resume while on Wi-Fi, it automatically tries to reconnect to the previously paired projector. Network failures preserve pairing; reopen the app after TV Preview is active.
+- N500 Preview securely remembers the authorized phone using AndroidKeyStore AES-GCM. After one deliberate PIN pairing, opening the experimental Preview automatically starts Phone Link and restores authorization without asking for a new six-digit code.
+- New v0.3 phone and v0.6 projector APKs must be installed and manually paired ONCE. Earlier versions didn't save both sides' tokens.
+- Phone Setup → Forget pairing clears local phone memory. Projector Preview → Settings → Phone Link → Disconnect Phone revokes the projector-side authorization and requires a fresh PIN.
+- OEM AndroidKeystore failure is a safe fallback: temporary session-only pairing still works but tokens are never stored as plaintext. No promise of remembering on unsupported devices.
+- Limits: the projector Preview must be open; this does not wake the projector, capture protected/HDMI playback, or allow unrestricted remote control of other apps.
+- Device validation pending even though both Android builds and release checks passed.
+- Security: tokens are encrypted AT REST; network HTTP is still unencrypted development-only on port 8765. Use only trusted private Wi-Fi, don't forward the port. Stable release needs encrypted transport.
+- This build uses the original Glass TV v1-style screen, NOT the laggy v0.4 Favorites hub. The stable Android Home app com.n500.glasstvhome remains untouched.
+- CI debug signing may require uninstalling ONLY the experimental Preview or phone app on signature mismatch; NEVER uninstall the stable Home.
 # N500 Glass TV Remote — Android Phone App with Integrated Live View (experimental)
 
 Branch: [feature/android-phone-remote-live-view](https://github.com/toshio2011/n500-glass-builder/tree/feature/android-phone-remote-live-view)
