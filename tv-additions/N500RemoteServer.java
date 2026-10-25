@@ -228,12 +228,15 @@ public final class N500RemoteServer {
                 String issued = hex.toString();
                 // Do not acknowledge pairing unless credentials are securely stored.
                 // An old phone can be deliberately forgotten at any time on the TV.
+                boolean remembered = true;
                 try {
                     N500PairingStore.save(appContext, "", issued);
                 } catch (Exception error) {
-                    Log.w(TAG, "Could not securely save pairing", error);
-                    json(out,503,"Projector could not save pairing securely");
-                    return;
+                    // An older projector without working hardware Keystore must
+                    // still allow this temporary manual-pair session.
+                    // NEVER save an unencrypted fallback token.
+                    remembered = false;
+                    Log.w(TAG, "Secure persistence unavailable; using session-only pairing", error);
                 }
                 token=issued;
                 paired=true;
@@ -246,7 +249,9 @@ public final class N500RemoteServer {
                 });
                 JSONObject response=new JSONObject();
                 response.put("token",token);
-                response.put("message","Paired with Glass TV N500 Preview");
+                response.put("remembered",remembered);
+                response.put("message",remembered ? "Paired and remembered on N500 Preview"
+                        : "Paired for this session (secure TV storage unavailable)");
                 reply(out,200,"application/json; charset=UTF-8",
                         response.toString().getBytes(StandardCharsets.UTF_8));
                 return;
