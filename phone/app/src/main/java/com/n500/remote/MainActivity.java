@@ -23,6 +23,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONObject;
+import org.json.JSONArray;
+import android.widget.FrameLayout;
+import android.graphics.drawable.Drawable;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -44,6 +47,11 @@ public final class MainActivity extends Activity {
     private TextView liveStatus;
     private ImageView frameView;
     private int activeTab = 0;
+    private final Button[] navButtons = new Button[4];
+    private static final int INK = 0xFF0B1622;
+    private static final int PANEL = 0xFF182B3C;
+    private static final int MINT = 0xFF9AE9D2;
+    private static final int MUTED = 0xFFABC0CD;
     private volatile boolean viewActive;
     private volatile int frameGeneration;
     private boolean destroyed;
@@ -62,7 +70,7 @@ public final class MainActivity extends Activity {
     private GradientDrawable bg(int color, int stroke) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(color);
-        drawable.setCornerRadius(dp(17));
+        drawable.setCornerRadius(dp(21));
         if (stroke != 0) drawable.setStroke(dp(1), stroke);
         return drawable;
     }
@@ -78,7 +86,7 @@ public final class MainActivity extends Activity {
     }
 
     private TextView heading(String value) {
-        TextView label = text(value, 22, Color.WHITE, true);
+        TextView label = text(value, 23, Color.WHITE, true);
         label.setPadding(0, dp(14), 0, dp(9));
         return label;
     }
@@ -98,8 +106,9 @@ public final class MainActivity extends Activity {
         b.setAllCaps(false);
         b.setText(label);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(15);
-        b.setBackground(bg(Color.rgb(33, 47, 70), Color.rgb(60, 83, 112)));
+        b.setTextSize(14);
+        b.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        b.setBackground(bg(0xFF263B4E, 0xFF3C5B6E));
         b.setPadding(dp(8), dp(7), dp(8), dp(7));
         return b;
     }
@@ -115,7 +124,7 @@ public final class MainActivity extends Activity {
 
     private void addGridButton(LinearLayout row, String text, int weight, Runnable onTap) {
         Button b = button(text);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(62), weight);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(55), weight);
         p.setMargins(dp(3), dp(3), dp(3), dp(3));
         row.addView(b, p);
         b.setOnClickListener(v -> onTap.run());
@@ -123,159 +132,261 @@ public final class MainActivity extends Activity {
 
     private void buildUI() {
         LinearLayout base = linear(false);
-        base.setBackgroundColor(Color.rgb(10, 17, 30));
-        base.setPadding(dp(16), dp(12), dp(16), 0);
+        android.graphics.drawable.GradientDrawable backdrop = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF091623, 0xFF101F2E, 0xFF07131B});
+        base.setBackground(backdrop);
+        base.setPadding(dp(20), dp(16), dp(20), dp(8));
         setContentView(base);
 
-        TextView title = text("GLASS TV   /   REMOTE", 20, Color.WHITE, true);
-        add(base, title);
-        connection = text("Not paired • Your v1.0.0 projector Home is untouched", 12, Color.rgb(180, 200, 220), false);
-        connection.setPadding(0, dp(8), 0, dp(16));
-        add(base, connection);
+        LinearLayout header = linear(true);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView emblem = text("◈", 31, MINT, true);
+        emblem.setGravity(Gravity.CENTER);
+        emblem.setBackground(bg(0xFF203D49, 0xFF527B79));
+        header.addView(emblem, new LinearLayout.LayoutParams(dp(55), dp(55)));
 
-        LinearLayout tabs = linear(true);
-        String[] labels = {"Remote", "Live View", "Setup"};
-        for (int i = 0; i < labels.length; i++) {
-            final int tab = i;
-            Button b = button(labels[i]);
-            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(49), 1);
-            params.setMargins(dp(2), 0, dp(2), 0);
-            tabs.addView(b, params);
-            b.setOnClickListener(v -> showTab(tab));
-        }
-        add(base, tabs);
-        gap(base, 8);
+        LinearLayout titles = linear(false);
+        titles.setPadding(dp(13), 0, 0, 0);
+        add(titles, text("GLASS  /  N500", 19, Color.WHITE, true));
+        TextView subtitle = text("Your projector, within reach.", 12, MUTED, false);
+        subtitle.setPadding(0, dp(4), 0, 0);
+        add(titles, subtitle);
+        header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
+        add(base, header);
+        gap(base, 14);
 
+        LinearLayout state = linear(true);
+        state.setGravity(Gravity.CENTER_VERTICAL);
+        state.setPadding(dp(14), dp(12), dp(14), dp(12));
+        state.setBackground(bg(0xA21D3342, 0xFF3B5C65));
+        TextView dot = text("●", 14, MINT, true);
+        state.addView(dot, new LinearLayout.LayoutParams(dp(22), -2));
+        connection = text("Not paired • Connect to your N500", 12, 0xFFDFECEF, false);
+        state.addView(connection, new LinearLayout.LayoutParams(0, -2, 1));
+        add(base, state);
+
+        gap(base, 10);
         ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
+        scroll.setFillViewport(true);
         content = linear(false);
+        content.setPadding(0, dp(4), 0, dp(12));
         scroll.addView(content);
         base.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        LinearLayout navbar = linear(true);
+        navbar.setPadding(dp(4), dp(8), dp(4), dp(5));
+        navbar.setBackground(bg(0xF0192A39, 0xFF395467));
+        String[] labels = {"◉  Remote", "▣  Live", "▦  Apps", "⚙  Setup"};
+        for (int i=0;i<labels.length;i++) {
+            final int tab = i;
+            Button b = button(labels[i]);
+            b.setTextSize(11);
+            b.setPadding(0, 0, 0, 0);
+            navButtons[i] = b;
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(52), 1);
+            p.setMargins(dp(2),0,dp(2),0);
+            navbar.addView(b, p);
+            b.setOnClickListener(v -> showTab(tab));
+        }
+        add(base, navbar);
         showTab(0);
     }
-
     private void showTab(int index) {
+        if (activeTab == 1 && index != 1) stopLive();
         activeTab = index;
         content.removeAllViews();
+        for (int i=0;i<navButtons.length;i++) {
+            if(navButtons[i] != null) {
+                boolean on=i==index;
+                navButtons[i].setTextColor(on ? INK : 0xFFD3E0E7);
+                navButtons[i].setBackground(bg(on ? MINT : 0x00203246, on ? MINT : 0));
+            }
+        }
         if (index == 0) buildRemote();
         else if (index == 1) buildLiveView();
+        else if (index == 2) buildApps();
         else buildSetup();
     }
-
     private void card(String headline, String desc) {
         LinearLayout card = linear(false);
         pad(card, 15);
-        card.setBackground(bg(Color.rgb(20, 32, 49), Color.rgb(45, 64, 81)));
-        add(card, text(headline, 16, Color.WHITE, true));
-        TextView sub = text(desc, 13, Color.rgb(180, 195, 214), false);
+        card.setBackground(bg(0xD5203444, 0xFF375165));
+        add(card, text(headline, 15, Color.WHITE, true));
+        TextView sub = text(desc, 12, MUTED, false);
+        sub.setLineSpacing(dp(3), 1);
         sub.setPadding(0, dp(5), 0, 0);
         add(card, sub);
         add(content, card);
         gap(content, 12);
     }
-
     private void buildRemote() {
-        add(content, heading("Projector remote"));
-        card("One remote, two apps",
-                "Use your N500 physical remote as usual. This phone controller will talk to the paired projector service over your Wi-Fi.");
-        LinearLayout r1 = linear(true);
-        addGridButton(r1, "INPUT", 1, () -> send("INPUT"));
-        addGridButton(r1, "HOME", 1, () -> send("HOME"));
-        addGridButton(r1, "BACK", 1, () -> send("BACK"));
-        add(content, r1);
+        add(content, heading("The remote."));
+        TextView sub = text("A little control, a lot of possibilities.", 13, MUTED, false);
+        add(content, sub);
+        gap(content, 18);
 
-        LinearLayout up = linear(true);
-        addGridButton(up, " ", 1, () -> {});
-        addGridButton(up, "▲", 1, () -> send("UP"));
-        addGridButton(up, " ", 1, () -> {});
-        add(content, up);
-        LinearLayout middle = linear(true);
-        addGridButton(middle, "◀", 1, () -> send("LEFT"));
-        addGridButton(middle, "OK", 1, () -> send("OK"));
-        addGridButton(middle, "▶", 1, () -> send("RIGHT"));
-        add(content, middle);
-        LinearLayout down = linear(true);
-        addGridButton(down, " ", 1, () -> {});
-        addGridButton(down, "▼", 1, () -> send("DOWN"));
-        addGridButton(down, " ", 1, () -> {});
-        add(content, down);
+        LinearLayout controls = linear(true);
+        addGridButton(controls, "⌂  Home", 1, () -> send("HOME"));
+        addGridButton(controls, "⤺  Back", 1, () -> send("BACK"));
+        addGridButton(controls, "▣  Input", 1, () -> send("INPUT"));
+        add(content, controls);
+        gap(content, 17);
 
-        gap(content, 10);
+        LinearLayout dpadHolder = linear(false);
+        dpadHolder.setGravity(Gravity.CENTER);
+        dpadHolder.setPadding(dp(11), dp(16), dp(11), dp(16));
+        dpadHolder.setBackground(bg(0xC01B2E3C, 0xFF355264));
+        GlassDpad dpad = new GlassDpad(this, this::send);
+        dpadHolder.addView(dpad, new LinearLayout.LayoutParams(
+                dp(265), dp(265)));
+        add(content, dpadHolder);
+        gap(content, 18);
+
+        TextView volumeTitle = text("VOLUME", 11, 0xFF91B3BD, true);
+        volumeTitle.setLetterSpacing(.18f);
+        add(content, volumeTitle);
+        gap(content, 7);
         LinearLayout volume = linear(true);
-        addGridButton(volume, "VOL −", 1, () -> send("VOL_DOWN"));
-        addGridButton(volume, "MUTE", 1, () -> send("MUTE"));
-        addGridButton(volume, "VOL +", 1, () -> send("VOL_UP"));
+        addGridButton(volume, "−", 1, () -> send("VOL_DOWN"));
+        addGridButton(volume, "◌  Mute", 2, () -> send("MUTE"));
+        addGridButton(volume, "+", 1, () -> send("VOL_UP"));
         add(content, volume);
-
         gap(content, 16);
-        Button pair = button("Connect / Pair N500");
-        add(content, pair);
-        pair.setOnClickListener(v -> showPairing());
-        gap(content, 15);
-        card("Remote availability", "The phone APK is built separately from the TV controller. Buttons require a paired N500 Preview with its controller endpoint running. Home/Back and volume may require device-specific integration outside the launcher.");
+        card("Remote status", "Navigation currently controls Glass TV Preview while it is in front. Other apps and HDMI still use your physical remote.");
     }
-
     private void buildLiveView() {
-        add(content, heading("Live View  ·  Watch projector"));
-        card("See the projector on your phone",
-                "This tab is part of Glass TV Remote. A real picture is only displayed if N500 has started an approved screen-capture session. No fake images or DRM bypass.");
+        add(content, heading("Live on your wall."));
+        add(content, text("An actual view of your projector screen, right here.", 13, MUTED, false));
+        gap(content, 16);
+        FrameLayout viewport = new FrameLayout(this);
+        viewport.setBackground(bg(0xFF02090E, 0xFF3E5B68));
         frameView = new ImageView(this);
-        frameView.setBackground(bg(Color.rgb(3, 8, 14), Color.rgb(50, 80, 106)));
         frameView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        content.addView(frameView, new LinearLayout.LayoutParams(-1, dp(215)));
-        liveStatus = text("Live View is OFF", 14, Color.rgb(183, 206, 228), false);
-        liveStatus.setPadding(0, dp(13), 0, dp(13));
+        viewport.addView(frameView, new FrameLayout.LayoutParams(-1,-1));
+        TextView marker = text("◉  PROJECTOR LIVE VIEW", 11, MINT, true);
+        marker.setPadding(dp(14), dp(10), dp(14), dp(10));
+        FrameLayout.LayoutParams mp = new FrameLayout.LayoutParams(-2,-2,Gravity.TOP | Gravity.LEFT);
+        viewport.addView(marker,mp);
+        TextView idle = text("SCREEN PREVIEW", 14, 0xFF68828F, true);
+        idle.setGravity(Gravity.CENTER);
+        viewport.addView(idle, new FrameLayout.LayoutParams(-1,-1));
+        // A real frame is always drawn in ImageView; placeholder must disappear
+        // once capture returns content. It must not pretend to be a screenshot.
+        frameView.setTag(idle);
+        addFrame(content, viewport, dp(228));
+        gap(content, 11);
+        liveStatus = text("●  OFFLINE  •  Start sharing to see your N500", 12, MUTED, false);
         add(content, liveStatus);
+        gap(content, 13);
 
         LinearLayout buttons = linear(true);
-        addGridButton(buttons, "Start Live View", 1, this::startLive);
-        addGridButton(buttons, "STOP", 1, this::stopLive);
+        addGridButton(buttons, "◉  Start Live View", 2, this::startLive);
+        addGridButton(buttons, "■  Stop", 1, this::stopLive);
         add(content, buttons);
-        gap(content, 10);
-        add(content, text("Capture requires projector-side approval each session. Protected streaming content may show black; HDMI may not be capturable. Initial goal: silent, low-frame-rate local preview.", 13, Color.rgb(188, 207, 223), false));
-        gap(content, 12);
+        gap(content, 18);
+        add(content, text("QUICK CONTROLS", 11, MUTED, true));
+        gap(content, 7);
         LinearLayout navigation = linear(true);
         addGridButton(navigation, "◀", 1, () -> send("LEFT"));
         addGridButton(navigation, "OK", 1, () -> send("OK"));
         addGridButton(navigation, "▶", 1, () -> send("RIGHT"));
         add(content, navigation);
         LinearLayout other = linear(true);
-        addGridButton(other, "Back", 1, () -> send("BACK"));
-        addGridButton(other, "Home", 1, () -> send("HOME"));
+        addGridButton(other, "↩  Back", 1, () -> send("BACK"));
+        addGridButton(other, "⌂  Home", 1, () -> send("HOME"));
         add(content, other);
+        gap(content, 12);
+        card("Private by design", "Approve capture on the projector each time. Audio isn't available yet. Protected streaming video and HDMI may not be capturable.");
     }
 
+    private void addFrame(LinearLayout parent, View view, int h) {
+        parent.addView(view,new LinearLayout.LayoutParams(-1,h));
+    }
     private void buildSetup() {
-        add(content, heading("Connect to your N500"));
-        card("Local Wi-Fi pairing",
-                "Use the TV-side Phone Link menu to display a one-time six-digit code. Your phone and projector must use the same Wi-Fi.");
-        Button pair = button("Enter projector IP and pairing code");
-        add(content, pair);
+        add(content, heading("Make the connection."));
+        add(content,text("One screen. One phone. Same home Wi-Fi.",13,MUTED,false));
+        gap(content,16);
+        card("01   Open Phone Link", "On the N500 Glass TV Preview, open Settings → Phone Link (Experimental).");
+        card("02   Pair securely", "Enter the projector IP and the six-digit code displayed on the projector. The code expires after two minutes.");
+
+        Button pair = button("✦   Pair another projector");
+        add(content,pair);
         pair.setOnClickListener(v -> showPairing());
-        gap(content, 12);
-        Button check = button("Check connection");
-        add(content, check);
+        gap(content,10);
+        Button check = button("◎   Check projector connection");
+        add(content,check);
         check.setOnClickListener(v -> task("Checking projector…", () -> {
             if (tv == null || !tv.isPaired()) throw new IllegalStateException("Pair first");
             JSONObject status = tv.status();
             return "Connected: " + status.optString("name", "Glass TV") + " • " + tv.address();
         }));
-        gap(content, 12);
-        Button disconnect = button("Forget pairing");
-        add(content, disconnect);
+        gap(content,10);
+        Button disconnect = button("⤫   Forget pairing");
+        add(content,disconnect);
         disconnect.setOnClickListener(v -> {
             stopLive();
-            if (tv != null) tv.clearPairing();
+            if(tv != null)tv.clearPairing();
             connection.setText("Not paired");
-            Toast.makeText(this, "Disconnected", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"Disconnected",Toast.LENGTH_SHORT).show();
         });
-        gap(content, 16);
-        card("Phone controller developer preview",
-                "The current projector v1.0.0 APK has NO remote-control API. Pairing and streaming require the next paired TV preview build. The remote is not connected through ADB.");
-        card("Privacy", "Live View must never start silently. This MVP uses unencrypted private-LAN HTTP for development and must not be exposed to public Wi-Fi or forwarded to the Internet. Encrypted transport is required before general release.");
+        gap(content,19);
+        card("Privacy and preview limits", "Live View needs projector approval. Current development connection uses private-LAN HTTP without encryption. Only use it on trusted Wi-Fi; don't expose port 8765 to the internet.");
     }
 
+    private void buildApps() {
+        add(content,heading("Everything, in reach."));
+        add(content,text("Launch apps actually installed on your N500.",13,MUTED,false));
+        gap(content,15);
+        LinearLayout list=linear(false);
+        card("Discover your projector", "App list comes from the paired N500. Continue Watching and Recommendations only appear on the TV when real source data is accessible.");
+        add(content,list);
+        if(tv==null || !tv.isPaired()) {
+            add(list,text("Pair with your N500 in Setup to load its apps.",14,MUTED,false));
+            return;
+        }
+        add(list,text("Loading installed apps…",14,MUTED,false));
+        io.execute(() -> {
+            JSONObject response=null;
+            String err=null;
+            try {response=tv.apps();} catch(Exception e) {err=e.getMessage();}
+            final JSONObject found=response;
+            final String failure=err;
+            ui.post(() -> {
+                if(destroyed || activeTab!=2) return;
+                list.removeAllViews();
+                if(failure!=null) {
+                    add(list,text("Couldn't load installed apps: "+failure,13,MUTED,false));
+                    return;
+                }
+                JSONArray apps=found.optJSONArray("apps");
+                if(apps==null || apps.length()==0) {
+                    add(list,text("No launchable apps were returned by the projector.",13,MUTED,false));
+                    return;
+                }
+                for(int i=0;i<apps.length();i+=2) {
+                    LinearLayout line=linear(true);
+                    for(int k=i;k<Math.min(i+2,apps.length());k++) {
+                        JSONObject app=apps.optJSONObject(k);
+                        if(app==null)continue;
+                        String label=app.optString("label","App");
+                        String pkg=app.optString("package","");
+                        Button b=button("▣  "+label);
+                        b.setTextSize(12);
+                        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(70),1);
+                        lp.setMargins(dp(3),dp(3),dp(3),dp(3));
+                        line.addView(b,lp);
+                        b.setOnClickListener(v-> task("Opening "+label+"…",()->{
+                            if(tv==null)throw new IllegalStateException("Not paired");
+                            return tv.launch(pkg).optString("message","Opening "+label);
+                        }));
+                    }
+                    add(list,line);
+                }
+            });
+        });
+    }
     private void showPairing() {
         LinearLayout fields = linear(false);
         pad(fields, 12);
@@ -377,6 +488,7 @@ public final class MainActivity extends Activity {
                 }
                 if (ready != null && frameView != null) {
                     frameView.setImageBitmap(ready);
+                    if (frameView.getTag() instanceof View) ((View) frameView.getTag()).setVisibility(View.GONE);
                     if (liveStatus != null) liveStatus.setText("LIVE • N500 screen capture");
                 }
                 ui.postDelayed(() -> poll(generation), 1200);
