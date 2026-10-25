@@ -2,12 +2,17 @@ name: Build safe N500 Glass TV Preview APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/android-phone-remote-live-view]
     paths:
       - ".github/workflows/build-n500-preview.yml"
       - "tools/patch_preview.py"
       - "tools/patch_glass.py"
       - "tools/patch_mini_weather.py"
+      - "tools/patch_phone_link.py"
+      - "tools/patch_n500_hub.py"
+      - "tools/patch_github_update.py"
+      - "tools/patch_persistent_signer.py"
+      - "tv-additions/**"
   workflow_dispatch:
 
 permissions:
@@ -40,16 +45,46 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Python compile checks
-        run: python3 -m py_compile tools/patch_glass.py tools/patch_preview.py tools/patch_mini_weather.py
+        run: python3 -m py_compile tools/patch_glass.py tools/patch_preview.py tools/patch_mini_weather.py tools/patch_phone_link.py tools/patch_n500_hub.py tools/patch_github_update.py tools/patch_persistent_signer.py
 
       - name: Patch normal N500 variant then isolate PREVIEW
         run: |
           python3 tools/patch_glass.py _upstream/launcher
           python3 tools/patch_preview.py _upstream/launcher
           python3 tools/patch_mini_weather.py _upstream/launcher
+          if [ "$GITHUB_REF_NAME" = "feature/android-phone-remote-live-view" ]; then
+            python3 tools/patch_phone_link.py _upstream/launcher
+            # v0.4 Favorites hub disabled after physical N500 lag / frozen UI regression.
+            # Preserve original pinned Glass TV v1-style grid and wallpaper.
+            python3 tools/patch_github_update.py _upstream/launcher
+          fi
+
+      - name: Configure persistent Preview signer if GitHub secrets exist
+        shell: bash
+        env:
+          N500_KEYSTORE_BASE64: ${{ secrets.N500_PREVIEW_KEYSTORE_BASE64 }}
+          N500_PREVIEW_STORE_PASSWORD: ${{ secrets.N500_PREVIEW_STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$N500_KEYSTORE_BASE64" ] && [ -z "$N500_PREVIEW_STORE_PASSWORD" ]; then
+            echo "::warning::Preview signed with temporary CI debug key. In-place updates from other runs will be blocked."
+            exit 0
+          fi
+          if [ -z "$N500_KEYSTORE_BASE64" ] || [ -z "$N500_PREVIEW_STORE_PASSWORD" ]; then
+            echo "::error::Both GitHub Actions signing secrets must be configured together."
+            exit 1
+          fi
+          signing_path="$RUNNER_TEMP/n500-preview-release.p12"
+          printf '%s' "$N500_KEYSTORE_BASE64" | base64 --decode > "$signing_path"
+          chmod 600 "$signing_path"
+          echo "N500_PREVIEW_KEYSTORE_PATH=$signing_path" >> "$GITHUB_ENV"
+          keytool -list -keystore "$signing_path"             -storepass "$N500_PREVIEW_STORE_PASSWORD" -alias n500-preview >/dev/null
+          python3 tools/patch_persistent_signer.py _upstream/launcher
 
       - name: Build Android preview
         working-directory: _upstream/launcher
+        env:
+          N500_PREVIEW_STORE_PASSWORD: ${{ secrets.N500_PREVIEW_STORE_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace :app:assembleRelease
@@ -64,7 +99,12 @@ jobs:
           aapt_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -n 1)"
           test -n "$aapt_bin"
           "$aapt_bin" dump badging "$apk" | grep -F "package: name='com.n500.glasstvhome.preview'"
-          "$aapt_bin" dump badging "$apk" | grep -F "versionName='2.6.0-n500.preview.1'"
+          if [ "$GITHUB_REF_NAME" = "feature/android-phone-remote-live-view" ]; then
+            "$aapt_bin" dump badging "$apk" | grep -F "versionName='2.6.0-n500.preview.6'"
+            "$aapt_bin" dump badging "$apk" | grep -F "versionCode='13'"
+          else
+            "$aapt_bin" dump badging "$apk" | grep -F "versionName='2.6.0-n500.preview.1'"
+          fi
           if "$aapt_bin" dump xmltree "$apk" AndroidManifest.xml | grep -F -q 'android.intent.category.HOME'; then
             echo "ERROR: Preview must NOT register as an Android Home launcher" >&2
             exit 1

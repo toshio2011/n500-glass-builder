@@ -1,0 +1,105 @@
+name: Publish N500 v0.3 GitHub Updater Preview
+on:
+  push:
+    branches: [feature/android-phone-remote-live-view]
+    paths:
+      - ".github/workflows/publish-v03-github-updater.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: n500-v03-github-updater
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download previously successful v0.3 APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=40172224138
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .conclusion)" = success
+          mkdir -p update
+          gh run download "$run" -R "$GITHUB_REPOSITORY" -n N500-Glass-TV-PREVIEW-APK -D update
+          (cd update && sha256sum -c n500-glass-tv-preview.sha256)
+          unzip -t update/n500-glass-tv-preview.apk >/dev/null
+
+      - name: Verify exact app, version, no Home intent and APK signing certificate
+        run: |
+          set -euo pipefail
+          apk=update/n500-glass-tv-preview.apk
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+          signer_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
+          test -x "$aapt_bin" && test -x "$signer_bin"
+          "$aapt_bin" dump badging "$apk" | grep -F "package: name='com.n500.glasstvhome.preview' versionCode='10' versionName='2.6.0-n500.preview.3'"
+          if "$aapt_bin" dump xmltree "$apk" AndroidManifest.xml | grep -Fq 'android.intent.category.HOME'; then
+            echo "Unsafe: Preview advertises Home" >&2
+            exit 1
+          fi
+          "$signer_bin" verify --print-certs "$apk" | tee update/cert.txt
+          signer="$(grep -m1 'certificate SHA-256 digest:' update/cert.txt | sed -E 's/.*digest:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d '\r[:space:]')"
+          [[ "$signer" =~ ^[a-f0-9]{64}$ ]] || exit 1
+          echo "SIGNER_SHA256=$signer" >> "$GITHUB_ENV"
+
+      - name: Generate release update manifest and SHA256
+        run: |
+          set -euo pipefail
+          name=n500-glass-tv-PROJECTOR-preview-v0.3.apk
+          mv update/n500-glass-tv-preview.apk "update/$name"
+          export APK_SHA256="$(sha256sum "update/$name" | cut -d' ' -f1)"
+          export APK_NAME="$name"
+          python3 - <<'PY'
+          import json, os
+          data = {
+            "releaseTag": "n500-v0.3-github-updater-preview",
+            "packageName": "com.n500.glasstvhome.preview",
+            "versionCode": 10,
+            "versionName": "2.6.0-n500.preview.3",
+            "apkAsset": os.environ["APK_NAME"],
+            "sha256": os.environ["APK_SHA256"],
+            "signerSha256": os.environ["SIGNER_SHA256"],
+            "changelog": "GitHub Check for Updates with APK checksum, version, package and signature checks; compact weather and real streaming shelves; paired remote and opt-in Live View. Still experimental."
+          }
+          with open("update/n500-PROJECTOR-update.json", "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+          PY
+          (cd update && sha256sum "$name" > SHA256SUMS.txt)
+
+      - name: Publish immutable v0.3 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=n500-v0.3-github-updater-preview
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Already published. Do not overwrite the exact APK or signing cert."
+            exit 0
+          fi
+          cat > NOTES.md <<'NOTES'
+          # N500 Glass TV Preview v0.3 - GitHub Check for Updates
+
+          Experimental APK for the projector Preview, NOT a replacement for your working stable Home v1.0.0. This APK has passed GitHub Android build checks but still needs real N500 device testing.
+
+          Settings > Check for Updates now checks the N500 GitHub Releases preview channel. For future updates, it verifies APK SHA-256, package, versionCode and signing certificate before offering Android's install confirmation. It never silently uninstalls your launcher.
+
+          IMPORTANT: Older preview APKs were signed with one-time debug keys. Android will reject an in-place update from v0.2 to v0.3. Install this initial update using Termux; uninstall ONLY com.n500.glasstvhome.preview if INSTALL_FAILED_UPDATE_INCOMPATIBLE appears. Stable com.n500.glasstvhome stays untouched.
+
+          Future truly one-tap upgrades require configuring the SAME persistent private APK signing key for successive releases; otherwise Check for Updates will show a safe manual-reinstall warning instead of breaking the launcher. No signing key is published in the repo.
+
+          Phone remote is unchanged from experimental v0.2 pair. Continue Watching depends on genuine firmware provider permissions; Live View/HDMI remain device-dependent. Use private Wi-Fi only; do not expose the development Phone Link HTTP service to the Internet.
+
+          Stable v1.0.0 backup: https://github.com/toshio2011/n500-glass-builder/releases/tag/n500-v1.0.0-known-good
+          NOTES
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" \
+            --target "6b05fdf303517284f4bfa838e4ae692d1bf4c839" \
+            --title "N500 Glass TV Preview v0.3 - Check for Updates (experimental)" \
+            --prerelease --notes-file NOTES.md \
+            update/n500-glass-tv-PROJECTOR-preview-v0.3.apk \
+            update/n500-PROJECTOR-update.json \
+            update/SHA256SUMS.txt
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" --json url,assets

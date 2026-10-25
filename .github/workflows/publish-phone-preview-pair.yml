@@ -1,0 +1,88 @@
+name: Publish experimental N500 Phone + TV pair
+
+on:
+  push:
+    branches: [feature/android-phone-remote-live-view]
+    paths:
+      - ".github/workflows/publish-phone-preview-pair.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: n500-phone-tv-pair-v0-2-preview
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download two previously successful APK build artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run in 40171408251 40171142406; do
+            test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .conclusion)" = "success"
+          done
+          mkdir -p tv phone release
+          gh run download 40171408251 -R "$GITHUB_REPOSITORY" -n N500-Glass-TV-PREVIEW-APK -D tv
+          gh run download 40171142406 -R "$GITHUB_REPOSITORY" -n N500-Glass-TV-Remote-PHONE-APK -D phone
+          (cd tv && sha256sum -c n500-glass-tv-preview.sha256)
+          (cd phone && sha256sum -c n500-glass-tv-remote-phone.sha256)
+          unzip -t tv/n500-glass-tv-preview.apk >/dev/null
+          unzip -t phone/n500-glass-tv-remote-phone.apk >/dev/null
+          cp tv/n500-glass-tv-preview.apk release/n500-glass-tv-PROJECTOR-preview-v0.2.apk
+          cp phone/n500-glass-tv-remote-phone.apk release/n500-glass-tv-remote-PHONE-preview-v0.2.apk
+          (cd release && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Publish safe experimental prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="n500-v0.2-phone-tv-preview"
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Prerelease already exists; refusing to replace APKs or change signatures."
+            exit 0
+          fi
+          cat > RELEASE_NOTES.md <<'EOF'
+          # N500 Glass TV + Glass Remote v0.2 — EXPERIMENTAL
+
+          These are two REAL APKs built successfully by GitHub Actions, but their newest UI and screen-capture behavior have not yet been tested on the owner's physical N500.
+
+          ## Which APK?
+          - PHONE: n500-glass-tv-remote-PHONE-preview-v0.2.apk — install on Android phone.
+          - PROJECTOR: n500-glass-tv-PROJECTOR-preview-v0.2.apk — install on the N500 over ADB.
+          - SHA256SUMS.txt — independent checksum for both files.
+
+          Your stable Glass TV v1.0.0 is not replaced. Projector Preview has separate package com.n500.glasstvhome.preview and is NOT registered as Android Home.
+
+          ## What's new?
+          - Phone: redesigned premium dark glass remote, custom circular touch D-pad, Live View integrated into same app, real Apps tab, simplified pairing.
+          - Projector: weather + header auto-collapse on deeper browsing, up to two compact streaming/content shelves by default (toggle more), genuine Watch Next/recommendation records only if Android TV exposes them, installed streaming apps, recent launcher history, opt-in Phone Link.
+          - Live View requires actual projector permission and displays only capturable content; protected content/HDMI may not work. No audio yet.
+          - Remote controls only Glass TV Preview while it's focused; not unrestricted global remote.
+
+          ## Test on trusted private home Wi-Fi only
+          Phone Link transport is HTTP and unencrypted in this development prototype. Do not port-forward or use on public Wi-Fi. Future stable builds need encrypted transport, persistent signing and real-device tests.
+
+          On N500 Preview, go to Settings > Phone Link (Experimental) to get IP:8765 and a fresh six-digit code. Enter these in phone APK Setup. Close the pairing window; successful pairing in latest preview closes it automatically.
+
+          Android signing may differ between CI preview runs. If replacement fails, uninstall ONLY the experimental package (not stable com.n500.glasstvhome). Stable launcher and fallback launchers stay installed.
+
+          Testing guide: https://github.com/toshio2011/n500-glass-builder/blob/feature/android-phone-remote-live-view/docs/PHONE_REMOTE_AND_LIVE_VIEW.md
+
+          Stable backup: https://github.com/toshio2011/n500-glass-builder/releases/tag/n500-v1.0.0-known-good
+          EOF
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" \
+            --target "87619f1f8d2b0b305cfd553e533a96c1f587ccf6" \
+            --title "N500 + Glass TV Remote v0.2 — EXPERIMENTAL APK pair" \
+            --prerelease --notes-file RELEASE_NOTES.md \
+            release/n500-glass-tv-PROJECTOR-preview-v0.2.apk \
+            release/n500-glass-tv-remote-PHONE-preview-v0.2.apk \
+            release/SHA256SUMS.txt
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" --json url,isPrerelease,assets

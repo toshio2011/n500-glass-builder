@@ -1,0 +1,129 @@
+name: Publish v0.6 N500 Auto-Reconnect APK Pair
+
+on:
+  push:
+    branches: [feature/android-phone-remote-live-view]
+    paths:
+      - ".github/workflows/publish-v06-auto-reconnect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: n500-remembered-pair-v06
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download and checksum-verify both successful APK builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run in 40186864148 40186849935; do
+            test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .conclusion)" = "success"
+          done
+          mkdir -p tv phone release
+          gh run download 40186864148 -R "$GITHUB_REPOSITORY" -n N500-Glass-TV-PREVIEW-APK -D tv
+          gh run download 40186849935 -R "$GITHUB_REPOSITORY" -n N500-Glass-TV-Remote-PHONE-APK -D phone
+          (cd tv && sha256sum -c n500-glass-tv-preview.sha256)
+          (cd phone && sha256sum -c n500-glass-tv-remote-phone.sha256)
+          unzip -t tv/n500-glass-tv-preview.apk >/dev/null
+          unzip -t phone/n500-glass-tv-remote-phone.apk >/dev/null
+          cp tv/n500-glass-tv-preview.apk release/n500-glass-tv-PROJECTOR-preview-v0.6.apk
+          cp phone/n500-glass-tv-remote-phone.apk release/n500-glass-tv-remote-PHONE-v0.3.apk
+          (cd release && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Validate app package/version and extract TV APK signer
+        run: |
+          set -euo pipefail
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+          signer_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
+          test -x "$aapt_bin" && test -x "$signer_bin"
+          tv=release/n500-glass-tv-PROJECTOR-preview-v0.6.apk
+          phone=release/n500-glass-tv-remote-PHONE-v0.3.apk
+          "$aapt_bin" dump badging "$tv" | grep -F "package: name='com.n500.glasstvhome.preview' versionCode='13' versionName='2.6.0-n500.preview.6'"
+          "$aapt_bin" dump badging "$phone" | grep -F "package: name='com.n500.remote' versionCode='2' versionName='0.3.0-dev'"
+          if "$aapt_bin" dump xmltree "$tv" AndroidManifest.xml | grep -Fq 'android.intent.category.HOME'; then
+            echo "Unsafe: experimental projector Preview cannot be a HOME app" >&2
+            exit 1
+          fi
+          "$signer_bin" verify --print-certs "$tv" > release/tv-signer.txt
+          signer="$(grep -m1 'certificate SHA-256 digest:' release/tv-signer.txt | sed -E 's/.*digest:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d '\r[:space:]')"
+          [[ "$signer" =~ ^[a-f0-9]{64}$ ]] || exit 1
+          echo "SIGNER_SHA256=$signer" >> "$GITHUB_ENV"
+
+      - name: Write honest GitHub OTA release metadata
+        run: |
+          set -euo pipefail
+          export APK_SHA256="$(sha256sum release/n500-glass-tv-PROJECTOR-preview-v0.6.apk | cut -d' ' -f1)"
+          python3 - <<'PY'
+          import json,os
+          data = {
+              "releaseTag": "n500-v0.6-remembered-phone-preview",
+              "packageName": "com.n500.glasstvhome.preview",
+              "versionCode": 13,
+              "versionName": "2.6.0-n500.preview.6",
+              "apkAsset": "n500-glass-tv-PROJECTOR-preview-v0.6.apk",
+              "sha256": os.environ["APK_SHA256"],
+              "signerSha256": os.environ["SIGNER_SHA256"],
+              "changelog": "Remembered phone pairing: after one initial manual PIN, N500 Preview and Glass TV Remote can restore encrypted credentials across app restarts and reconnect on private home Wi-Fi. Retains classic v1-style launcher visuals and opt-in Phone Link. Experimental only."
+          }
+          with open("release/n500-PROJECTOR-update.json","w") as output:
+              json.dump(data,output,indent=2)
+              output.write("\n")
+          PY
+
+      - name: Publish immutable experimental APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=n500-v0.6-remembered-phone-preview
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to overwrite APK/signature."
+            exit 0
+          fi
+          cat > NOTES.md <<'NOTES'
+          # Glass TV N500 Preview v0.6 + Phone Remote v0.3 — Remember My Projector
+
+          **EXPERIMENTAL. These are actual GitHub-built APKs but remembered reconnection has not been tested on the physical projector. Stable Glass TV v1.0.0 is untouched.**
+
+          ## Install the right APK
+          - N500 PROJECTOR: n500-glass-tv-PROJECTOR-preview-v0.6.apk — via Termux Wi-Fi ADB, package com.n500.glasstvhome.preview.
+          - ANDROID PHONE: n500-glass-tv-remote-PHONE-v0.3.apk — install on Android phone, package com.n500.remote.
+          - Verify SHA256SUMS.txt for both.
+
+          ## Remembered pairing
+          1. Install BOTH new APKs. Open projector Preview, then Settings > Phone Link (Experimental) and get its six-digit code.
+          2. Phone Remote > Setup > Pair, enter IP/code **ONCE**. Both devices store their pairing secret using AndroidKeyStore AES-GCM encrypted private app storage when supported.
+          3. Later, opening N500 Preview automatically restarts Phone Link for that *previously paired* phone, and opening Phone Remote reconnects over trusted home Wi-Fi without retyping the code.
+          4. Projector may be offline or asleep; phone retains the saved pairing. Reopen the Remote to reconnect when N500 Preview is active again.
+          5. To revoke pairing on the projector: Preview > Settings > Phone Link > Disconnect Phone. On phone use Setup > Forget pairing to clear its remembered credentials.
+          6. If OEM AndroidKeyStore secure storage is unavailable, pairing still works for the current session but **cannot be remembered**; no unencrypted token fallback.
+
+          ## Safety and limits
+          - The N500 projector uses the original **v1-style layout**, NOT the rejected laggy v0.4 Favorites hub. Side-by-side Preview only, with **NO Android HOME intent**; your original stable Glass TV v1.0.0 stays as Home.
+          - Experimental pairing still uses **unencrypted HTTP on port 8765**. Only use this build on a trusted private home Wi-Fi. Never port-forward. Production requires transport encryption and a security audit.
+          - Navigation is **Preview-only while focused**, not global system app/HDMI control. Live View requires permission, and DRM/HDMI capture may be blank.
+          - Previous experimental APKs were signed with temporary CI debugging certificates. If INSTALL_FAILED_UPDATE_INCOMPATIBLE occurs on the N500, remove **ONLY** com.n500.glasstvhome.preview, NEVER stable com.n500.glasstvhome. Phone APK may require uninstall of **com.n500.remote** if signing differs. Then re-pair ONCE.
+          - Permanent in-place OTA updates still need the repository owner to configure the private persistent signing key. The update button cannot bypass Android signing rules.
+
+          Home v0.4 freeze regression: https://github.com/toshio2011/n500-glass-builder/issues/2
+
+          Stable known-good launcher: https://github.com/toshio2011/n500-glass-builder/releases/tag/n500-v1.0.0-known-good
+          NOTES
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" \
+            --target "15488400d5ab1d0a1c8a951683480f9b50544be0" \
+            --title "N500 Phone Link v0.6/v0.3 — Remember Projector (EXPERIMENTAL)" \
+            --prerelease --notes-file NOTES.md \
+            release/n500-glass-tv-PROJECTOR-preview-v0.6.apk \
+            release/n500-glass-tv-remote-PHONE-v0.3.apk \
+            release/n500-PROJECTOR-update.json \
+            release/SHA256SUMS.txt
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" --json url,assets
