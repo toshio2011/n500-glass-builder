@@ -11,6 +11,7 @@ on:
       - "tools/patch_phone_link.py"
       - "tools/patch_home_shelves.py"
       - "tools/patch_github_update.py"
+      - "tools/patch_persistent_signer.py"
       - "tv-additions/**"
   workflow_dispatch:
 
@@ -44,7 +45,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Python compile checks
-        run: python3 -m py_compile tools/patch_glass.py tools/patch_preview.py tools/patch_mini_weather.py tools/patch_phone_link.py tools/patch_home_shelves.py tools/patch_github_update.py
+        run: python3 -m py_compile tools/patch_glass.py tools/patch_preview.py tools/patch_mini_weather.py tools/patch_phone_link.py tools/patch_home_shelves.py tools/patch_github_update.py tools/patch_persistent_signer.py
 
       - name: Patch normal N500 variant then isolate PREVIEW
         run: |
@@ -57,8 +58,32 @@ jobs:
             python3 tools/patch_github_update.py _upstream/launcher
           fi
 
+      - name: Configure persistent Preview signer if GitHub secrets exist
+        shell: bash
+        env:
+          N500_KEYSTORE_BASE64: ${{ secrets.N500_PREVIEW_KEYSTORE_BASE64 }}
+          N500_PREVIEW_STORE_PASSWORD: ${{ secrets.N500_PREVIEW_STORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$N500_KEYSTORE_BASE64" ] && [ -z "$N500_PREVIEW_STORE_PASSWORD" ]; then
+            echo "::warning::Preview signed with temporary CI debug key. In-place updates from other runs will be blocked."
+            exit 0
+          fi
+          if [ -z "$N500_KEYSTORE_BASE64" ] || [ -z "$N500_PREVIEW_STORE_PASSWORD" ]; then
+            echo "::error::Both GitHub Actions signing secrets must be configured together."
+            exit 1
+          fi
+          signing_path="$RUNNER_TEMP/n500-preview-release.p12"
+          printf '%s' "$N500_KEYSTORE_BASE64" | base64 --decode > "$signing_path"
+          chmod 600 "$signing_path"
+          echo "N500_PREVIEW_KEYSTORE_PATH=$signing_path" >> "$GITHUB_ENV"
+          keytool -list -keystore "$signing_path"             -storepass "$N500_PREVIEW_STORE_PASSWORD" -alias n500-preview >/dev/null
+          python3 tools/patch_persistent_signer.py _upstream/launcher
+
       - name: Build Android preview
         working-directory: _upstream/launcher
+        env:
+          N500_PREVIEW_STORE_PASSWORD: ${{ secrets.N500_PREVIEW_STORE_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace :app:assembleRelease
