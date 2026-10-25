@@ -40,8 +40,8 @@ jobs:
             echo "Unsafe: Preview advertises Home" >&2
             exit 1
           fi
-          "$signer_bin" verify --print-certs "$apk" > update/cert.txt
-          signer="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' update/cert.txt | head -1 | tr '[:upper:]' '[:lower:]' | tr -d '\r')"
+          "$signer_bin" verify --print-certs "$apk" | tee update/cert.txt
+          signer="$(grep -m1 'certificate SHA-256 digest:' update/cert.txt | sed -E 's/.*digest:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d '\r[:space:]')"
           [[ "$signer" =~ ^[a-f0-9]{64}$ ]] || exit 1
           echo "SIGNER_SHA256=$signer" >> "$GITHUB_ENV"
 
