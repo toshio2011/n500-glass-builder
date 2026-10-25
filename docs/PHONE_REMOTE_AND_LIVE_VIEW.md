@@ -83,6 +83,30 @@ Expected: some controls may return \`409 Open Glass TV Preview\` when another An
 
 If any preview crashes: press **physical Home** to return to stable Glass TV v1.0.0. Remove only preview: \`adb uninstall com.n500.glasstvhome.preview\`. The stable known-good APK remains available in GitHub Releases.
 
+
+## Design and Home-shelf upgrade (25 October 2026)
+
+**Both APKs have been rebuilt as developer previews; real N500/device UI testing is still required.**
+
+**Phone remote UI (v0.1.0-dev, premium glass refresh):**
+- New dark gradient theme, compact connected-state banner, rounded bottom navigation.
+- **Remote:** custom drawn touch-responsive circular D-pad, Home/Back/Input and volume.
+- **Live View:** larger dark cinematic preview with visible live status, permission and stop controls in the SAME app.
+- **Apps:** reads actual launchable apps from the paired projector over an authenticated endpoint; tap to request launch. It does **not** fake Netflix history or control arbitrary app windows afterward.
+- **Setup:** simplified IP/code pairing, connection check and forget device.
+- Check and update the phone APK using the latest successful [Phone APK workflow](https://github.com/toshio2011/n500-glass-builder/actions/workflows/build-n500-phone.yml) **on this feature branch**.
+
+**Projector UI (side-by-side non-HOME Preview):**
+- **Settings → Home Layout & Streaming:** auto-hide header/weather when navigating deeper into app rows; toggle genuine Watch Next, recommended, recently opened, and detected streaming apps; optional expanded row density.
+- Defaults to a maximum of **two compact horizontal shelves** to prevent pushing app tiles off screen. Browsing deeper collapses the entire header and shelves to reclaim space; focus returning to the dock expands them.
+- Continue Watching and Recommended query Android TV provider; **empty or access-denied results are hidden**. No fabricated recommendations. Recently Opened uses Glass TV launcher history, not playback progress.
+- **Settings → Weather Layout** retains Original/Mini/Both/Off and 3/5/7-day controls.
+- Check and update the TV Preview only using the latest successful [TV Preview workflow](https://github.com/toshio2011/n500-glass-builder/actions/workflows/build-n500-preview.yml) **on this feature branch**.
+
+The two build workflows publish APK-containing ZIP artifacts. Developer-debug signing can differ from previous preview builds; Android may reject \`adb install -r\`. In that case, uninstall ONLY \`com.n500.glasstvhome.preview\` on the TV; never uninstall \`com.n500.glasstvhome\` (working stable). On the phone you may need to remove ONLY \`com.n500.remote\` when a development signature changes, then reinstall the new phone APK and pair again.
+
+**Device acceptance remains open:** projector overlay fit, mini-weather height, seamless collapse and expand, app shortcuts, physical D-pad, Android TV provider permission/absence, pairing, Live View permission and real captured frames, protected content blanking. Passing GitHub build is not proof these are correct on the real N500.
+
 ## Next
 
 - Full pairing integration, encrypted LAN transport, robust reconnect/disconnect.
