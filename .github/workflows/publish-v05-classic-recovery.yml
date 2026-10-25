@@ -1,0 +1,113 @@
+name: Publish N500 v0.5 Classic Recovery Preview
+on:
+  push:
+    branches: [feature/android-phone-remote-live-view]
+    paths:
+      - ".github/workflows/publish-v05-classic-recovery.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: n500-v05-classic-recovery
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download previously successful v0.3 APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=40179050576
+          test "$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq .conclusion)" = success
+          mkdir -p update
+          gh run download "$run" -R "$GITHUB_REPOSITORY" -n N500-Glass-TV-PREVIEW-APK -D update
+          (cd update && sha256sum -c n500-glass-tv-preview.sha256)
+          unzip -t update/n500-glass-tv-preview.apk >/dev/null
+
+      - name: Verify exact app, version, no Home intent and APK signing certificate
+        run: |
+          set -euo pipefail
+          apk=update/n500-glass-tv-preview.apk
+          aapt_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+          signer_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
+          test -x "$aapt_bin" && test -x "$signer_bin"
+          "$aapt_bin" dump badging "$apk" | grep -F "package: name='com.n500.glasstvhome.preview' versionCode='12' versionName='2.6.0-n500.preview.5'"
+          if "$aapt_bin" dump xmltree "$apk" AndroidManifest.xml | grep -Fq 'android.intent.category.HOME'; then
+            echo "Unsafe: Preview advertises Home" >&2
+            exit 1
+          fi
+          "$signer_bin" verify --print-certs "$apk" | tee update/cert.txt
+          signer="$(grep -m1 'certificate SHA-256 digest:' update/cert.txt | sed -E 's/.*digest:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d '\r[:space:]')"
+          [[ "$signer" =~ ^[a-f0-9]{64}$ ]] || exit 1
+          echo "SIGNER_SHA256=$signer" >> "$GITHUB_ENV"
+
+      - name: Generate release update manifest and SHA256
+        run: |
+          set -euo pipefail
+          name=n500-glass-tv-PROJECTOR-preview-v0.5.apk
+          mv update/n500-glass-tv-preview.apk "update/$name"
+          export APK_SHA256="$(sha256sum "update/$name" | cut -d' ' -f1)"
+          export APK_NAME="$name"
+          python3 - <<'PY'
+          import json, os
+          data = {
+            "releaseTag": "n500-v0.5-classic-recovery-preview",
+            "packageName": "com.n500.glasstvhome.preview",
+            "versionCode": 10,
+            "versionName": "2.6.0-n500.preview.5",
+            "apkAsset": os.environ["APK_NAME"],
+            "sha256": os.environ["APK_SHA256"],
+            "signerSha256": os.environ["SIGNER_SHA256"],
+            "changelog": "Restores the original Glass TV v1-style home app dock and hero/wallpaper, disables the laggy v0.4 content hub after real-device freeze reports, and retains optional Phone Link, weather layout and GitHub update checker. Experimental recovery build."
+          }
+          with open("update/n500-PROJECTOR-update.json", "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+          PY
+          (cd update && sha256sum "$name" > SHA256SUMS.txt)
+
+      - name: Publish immutable v0.3 prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=n500-v0.5-classic-recovery-preview
+          if gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Already published. Do not overwrite the exact APK or signing cert."
+            exit 0
+          fi
+          cat > NOTES.md <<'NOTES'
+          # N500 Preview v0.5 — CLASSIC UI RECOVERY (experimental)
+
+          **This experimental Preview backs out the failed v0.4 Favorites hub after the owner's real-device complaint of lag, freezing and visual crowding.**
+
+          What changed:
+          - Restores the original Glass TV wallpaper, floating hero, prayer information, original app dock/grid and familiar focus navigation.
+          - Disables the v0.4 custom ScrollView/thumbnail poster screen, which may have contributed to poor performance on the N500.
+          - Retains preview-only Phone Link, optional mini-weather and our GitHub Check for Updates. No global system remote guarantee.
+          - Does NOT modify the installed original stable Glass TV v1.0.0 (com.n500.glasstvhome), which remains the recommended default Home.
+
+          This APK is build-verified as com.n500.glasstvhome.preview (versionCode 12), with no Android HOME intent. It has NOT yet been evaluated on the actual projector.
+
+          **Recommendation:** stay on working v1.0.0 unless you specifically want to experiment with Preview + phone pairing. The original v1.0.0 is still safer and preferred.
+
+          Upgrade from v0.4 may fail with INSTALL_FAILED_UPDATE_INCOMPATIBLE because CI used different debug signing certificates. Remove ONLY the experimental Preview app com.n500.glasstvhome.preview if needed, NEVER stable com.n500.glasstvhome.
+
+          Bug report and acceptance criteria: https://github.com/toshio2011/n500-glass-builder/issues/2
+
+          Original known-good: https://github.com/toshio2011/n500-glass-builder/releases/tag/n500-v1.0.0-known-good
+
+          Private Wi-Fi only for Phone Link. GitHub in-place updater requires persistent private signing setup; no silent update or security bypass.
+          NOTES
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" \
+            --target "809bff569557b8b7dc0808981a748d0f7dd0b562" \
+            --title "N500 Glass TV Preview v0.5 - Classic UI Recovery (experimental)" \
+            --prerelease --notes-file NOTES.md \
+            update/n500-glass-tv-PROJECTOR-preview-v0.5.apk \
+            update/n500-PROJECTOR-update.json \
+            update/SHA256SUMS.txt
+          gh release view "$tag" -R "$GITHUB_REPOSITORY" --json url,assets
