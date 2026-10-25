@@ -49,10 +49,7 @@ def main():
         '''        grid.setAdapter(adapter);
         // The rich streaming shelf is assembled from actual installed apps,
         // recent launch history and readable Android TV program records.
-        n500Sections = N500HomeSections.attach(this, handler, (LinearLayout) mainContent);
-        handler.post(() -> {
-            if (n500Sections != null) n500Sections.refresh();
-        });''')
+        n500Sections = N500HomeSections.attach(this, handler, (LinearLayout) mainContent);''')
 
     once(main,'''        lastFocusedKey = adapter.keyAt(position);''',
         '''        lastFocusedKey = adapter.keyAt(position);
