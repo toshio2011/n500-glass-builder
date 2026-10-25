@@ -271,6 +271,22 @@ def main() -> None:
 
         islamicShelf''')
 
+    # Tile up-navigation must still reach the forecast when Original weather is hidden.
+    once(activity, '''                if (position <= 1 && weatherAirQualityView != null && weatherAirQualityView.getVisibility() == View.VISIBLE) {
+                    weatherAirQualityView.requestFocus();
+                    return true;
+                }
+                return false;''',
+         '''                if (position <= 1 && weatherAirQualityView != null && weatherAirQualityView.getVisibility() == View.VISIBLE) {
+                    weatherAirQualityView.requestFocus();
+                    return true;
+                }
+                if (position <= 1 && n500MiniForecastView != null && n500MiniForecastView.getVisibility() == View.VISIBLE) {
+                    n500MiniForecastView.requestFocus();
+                    return true;
+                }
+                return false;''')
+
     once(activity, '''    private void updateWeatherAqi() {
         if (weatherAirQualityView != null) {
             weatherAirQualityView.setText(WeatherAirQuality.getFormatted(this));
