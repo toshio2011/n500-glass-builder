@@ -406,6 +406,8 @@ final class N500Hub {
     void openApps() {
         appsPage=true;render();scroll.scrollTo(0,0);restoreFocus();
     }
+    boolean isAppsPage() { return appsPage; }
+
     boolean backHome() {
         if(!appsPage)return false;
         appsPage=false;render();scroll.scrollTo(0,0);restoreFocus();
