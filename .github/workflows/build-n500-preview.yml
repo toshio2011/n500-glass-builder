@@ -100,8 +100,8 @@ jobs:
           test -n "$aapt_bin"
           "$aapt_bin" dump badging "$apk" | grep -F "package: name='com.n500.glasstvhome.preview'"
           if [ "$GITHUB_REF_NAME" = "feature/android-phone-remote-live-view" ]; then
-            "$aapt_bin" dump badging "$apk" | grep -F "versionName='2.6.0-n500.preview.5'"
-            "$aapt_bin" dump badging "$apk" | grep -F "versionCode='12'"
+            "$aapt_bin" dump badging "$apk" | grep -F "versionName='2.6.0-n500.preview.6'"
+            "$aapt_bin" dump badging "$apk" | grep -F "versionCode='13'"
           else
             "$aapt_bin" dump badging "$apk" | grep -F "versionName='2.6.0-n500.preview.1'"
           fi
