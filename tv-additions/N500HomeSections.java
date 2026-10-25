@@ -53,7 +53,6 @@ final class N500HomeSections {
     private boolean collapsed;
     private boolean lastWatchReadable;
     private int itemCount;
-    private final List<Intent> contentIntents = new ArrayList<>();
     private boolean destroyed;
 
     private N500HomeSections(MainActivity activity, Handler handler, LinearLayout mainContent) {
@@ -84,17 +83,31 @@ final class N500HomeSections {
         // access is guarded; no fake provider entries displayed on error.
         setCollapsed(false);
         shelf.removeAllViews();
-        contentIntents.clear();
         itemCount = 0;
         lastWatchReadable = false;
         List<MediaItem> watch = queryPrograms(true);
         List<MediaItem> suggested = queryPrograms(false);
         List<MediaItem> recent = loadRecentApps();
         List<MediaItem> streaming = loadStreamingApps();
-        if (prefs.getBoolean(KEY_WATCH, true)) addShelf("CONTINUE WATCHING", watch, "WATCH NEXT", 6);
-        if (prefs.getBoolean(KEY_RECOMMEND, true)) addShelf("RECOMMENDED BY YOUR APPS", suggested, "DISCOVER", 6);
-        if (prefs.getBoolean(KEY_RECENT, true)) addShelf("RECENTLY OPENED", recent, "RECENT APPS", 7);
-        if (prefs.getBoolean(KEY_APPS, true)) addShelf("STREAMING APPS", streaming, "YOUR APPS", 10);
+        // Never let four shelves consume the whole Home screen. Default shows
+        // at most two compact rows; settings can expand for users who prefer it.
+        boolean expanded = prefs.getBoolean("expanded_shelves", false);
+        int visible = 0;
+        if (prefs.getBoolean(KEY_WATCH, true) && !watch.isEmpty()) {
+            addShelf("CONTINUE WATCHING", watch, "WATCH NEXT", 6);
+            visible++;
+        }
+        if (prefs.getBoolean(KEY_APPS, true) && !streaming.isEmpty() && (expanded || visible < 2)) {
+            addShelf("STREAMING APPS", streaming, "YOUR APPS", 10);
+            visible++;
+        }
+        if (prefs.getBoolean(KEY_RECENT, true) && !recent.isEmpty() && (expanded || visible < 2)) {
+            addShelf("RECENTLY OPENED", recent, "RECENT APPS", 7);
+            visible++;
+        }
+        if (prefs.getBoolean(KEY_RECOMMEND, true) && !suggested.isEmpty() && (expanded || visible < 2)) {
+            addShelf("RECOMMENDED BY YOUR APPS", suggested, "DISCOVER", 6);
+        }
         shelf.setVisibility(itemCount == 0 ? View.GONE : View.VISIBLE);
     }
 
@@ -217,13 +230,14 @@ final class N500HomeSections {
     }
 
     void showSettings() {
-        final String[] keys = {KEY_COLLAPSE,KEY_WATCH,KEY_RECOMMEND,KEY_RECENT,KEY_APPS};
+        final String[] keys = {KEY_COLLAPSE,KEY_WATCH,KEY_RECOMMEND,KEY_RECENT,KEY_APPS,"expanded_shelves"};
         final String[] texts = {
                 "Auto-hide header/weather when browsing deeper",
                 "Continue Watching (only genuine Android TV data)",
                 "Recommended (only genuine Android TV data)",
                 "Recently opened apps",
-                "Installed streaming apps"
+                "Installed streaming apps",
+                "Expanded shelves (show more than two rows)"
         };
         boolean[] checked = new boolean[keys.length];
         for(int i=0;i<keys.length;i++) checked[i]=prefs.getBoolean(keys[i],true);
