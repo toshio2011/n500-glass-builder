@@ -1,0 +1,103 @@
+name: Preserve first working N500 Glass TV APK
+
+# This workflow is only for the exact 25 October 2026 APK.
+# Never rebuild here: a fresh CI debug key will change its signature.
+on:
+  push:
+    paths:
+      - ".github/workflows/publish-known-good-backup.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: n500-known-good-backup-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish original known-good APK to GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download ORIGINAL successful artifact, not a rebuild
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p snapshot
+          gh run download 40153120439 \
+            -R "${GITHUB_REPOSITORY}" \
+            -n N500-Glass-TV-APK \
+            -D snapshot
+          ls -l snapshot
+
+      - name: Validate EXACT known-good APK SHA256 and embedded checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd snapshot
+          test -s n500-glass-tv.apk
+          test -s n500-glass-tv.sha256
+          sha256sum -c n500-glass-tv.sha256
+          printf '%s  %s\n' \
+            7fdf5785a394301d96483c0983a6f30b2a4b4aec50713f9ae6dc5d8c10c3a2e2 \
+            n500-glass-tv.apk | sha256sum -c -
+          unzip -t n500-glass-tv.apk >/dev/null
+          cp n500-glass-tv.apk n500-glass-tv-v1.0.0-known-good.apk
+          printf '%s  %s\n' \
+            7fdf5785a394301d96483c0983a6f30b2a4b4aec50713f9ae6dc5d8c10c3a2e2 \
+            n500-glass-tv-v1.0.0-known-good.apk > n500-glass-tv-v1.0.0-known-good.sha256
+
+      - name: Write recovery-oriented release notes
+        shell: bash
+        run: |
+          cat > /tmp/N500_BACKUP_RELEASE.md <<'NOTES'
+          # N500 Glass TV — first verified working backup (25 October 2026)
+
+          **This release stores the exact, already-working APK rather than a new build.**
+          - Device: N500/N500Pro Android projector
+          - Android package: `com.n500.glasstvhome`
+          - App versionName: `2.6.0-n500.1` (release title v1.0.0 is the backup milestone)
+          - Verified by owner: launcher displays, physical Home button works, survives reboot.
+          - Upstream source: Glass TV Home 2.6.0 at pinned commit `bfa48608c79074d5e57b9efeb098a64e7601e3cd`.
+          - Build: GitHub Actions run [40153120439](https://github.com/toshio2011/n500-glass-builder/actions/runs/40153120439).
+          - APK SHA256: `7fdf5785a394301d96483c0983a6f30b2a4b4aec50713f9ae6dc5d8c10c3a2e2`.
+
+          **Important:** This is a backup of the APK only, NOT a full backup of Android app-private settings, Wi-Fi credentials, projector firmware, or system state. The initial APK was signed with a CI-generated debug key; subsequent freshly rebuilt APKs may have a different certificate and **cannot necessarily install as updates over this exact build**. Do not uninstall it or assume in-place upgrades will work until a safe migration/updater is tested.
+
+          The owner currently uses Glass TV as Home with both `com.gathin.tvhome` (CleanYourTV) and `com.google.android.tvlauncher` still installed but disabled for user 0. Preserve them as fallbacks; this APK **does not** itself change which launchers are enabled.
+
+          Emergency recovery via a currently authorized Wi-Fi ADB connection from Termux:
+
+          ```sh
+          adb shell pm enable --user 0 com.gathin.tvhome
+          adb shell pm enable --user 0 com.google.android.tvlauncher
+          adb shell am start -n com.gathin.tvhome/.MainActivity
+          ```
+
+          Follow [backup and restore guide](https://github.com/toshio2011/n500-glass-builder/blob/main/docs/BACKUP_AND_RECOVERY.md) for the complete safe process. Future experiments should use a different Android package ID, avoiding disruption to the working Home.
+          NOTES
+
+      - name: Create immutable known-good release (skip if already present)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="n500-v1.0.0-known-good"
+          if gh release view "$tag" -R "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release $tag already exists, refusing to replace known-good assets."
+            exit 0
+          fi
+          gh release create "$tag" \
+            -R "${GITHUB_REPOSITORY}" \
+            --target "7e410cf8986b4464f1f241b12224848ee7cdb086" \
+            --title "N500 Glass TV v1.0.0 — Known-good Backup" \
+            --notes-file /tmp/N500_BACKUP_RELEASE.md \
+            snapshot/n500-glass-tv-v1.0.0-known-good.apk \
+            snapshot/n500-glass-tv-v1.0.0-known-good.sha256
+          gh release view "$tag" -R "${GITHUB_REPOSITORY}" --json url,assets
