@@ -36,8 +36,12 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Verify Android SDK
+        run: |
+          test -d "$ANDROID_HOME"
+          echo "Using Android SDK at $ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+          ls "$ANDROID_HOME/build-tools" || true
 
       - name: Set up Gradle caching
         uses: gradle/actions/setup-gradle@v4
