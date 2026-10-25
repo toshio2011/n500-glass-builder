@@ -2,12 +2,14 @@ name: Build safe N500 Glass TV Preview APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/android-phone-remote-live-view]
     paths:
       - ".github/workflows/build-n500-preview.yml"
       - "tools/patch_preview.py"
       - "tools/patch_glass.py"
       - "tools/patch_mini_weather.py"
+      - "tools/patch_phone_link.py"
+      - "tv-additions/**"
   workflow_dispatch:
 
 permissions:
@@ -40,13 +42,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Python compile checks
-        run: python3 -m py_compile tools/patch_glass.py tools/patch_preview.py tools/patch_mini_weather.py
+        run: python3 -m py_compile tools/patch_glass.py tools/patch_preview.py tools/patch_mini_weather.py tools/patch_phone_link.py
 
       - name: Patch normal N500 variant then isolate PREVIEW
         run: |
           python3 tools/patch_glass.py _upstream/launcher
           python3 tools/patch_preview.py _upstream/launcher
           python3 tools/patch_mini_weather.py _upstream/launcher
+          if [ "$GITHUB_REF_NAME" = "feature/android-phone-remote-live-view" ]; then
+            python3 tools/patch_phone_link.py _upstream/launcher
+          fi
 
       - name: Build Android preview
         working-directory: _upstream/launcher
