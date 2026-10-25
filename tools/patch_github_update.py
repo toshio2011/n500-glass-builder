@@ -23,9 +23,9 @@ def main():
     gradle=tree/"app/build.gradle"
     if "applicationId 'com.n500.glasstvhome.preview'" not in gradle.read_text(encoding="utf-8"):
         raise RuntimeError("Only side-by-side N500 Preview may use this updater")
-    replace_one(gradle,"versionCode 8","versionCode 11")
+    replace_one(gradle,"versionCode 8","versionCode 12")
     replace_one(gradle,"versionName '2.6.0-n500.preview.1'",
-                "versionName '2.6.0-n500.preview.4'")
+                "versionName '2.6.0-n500.preview.5'")
     updater=tree/"app/src/main/java/com/gathin/tvhome/AppUpdateManager.java"
     existing=updater.read_text(encoding="utf-8")
     if "updates are built in GitHub Actions" not in existing:
@@ -38,6 +38,6 @@ def main():
     assert "aqmangge/glass-tv-home" not in installed
     assert "certificateDigest" in installed
     assert "DOWNLOAD" not in installed or "download" in installed
-    print("N500 Preview OTA: v11, update manifest from OUR GitHub releases, signature+SHA checks.")
+    print("N500 Preview OTA: v12, update manifest from OUR GitHub releases, signature+SHA checks.")
 if __name__=="__main__":
     main()
