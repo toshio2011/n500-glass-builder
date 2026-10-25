@@ -91,10 +91,6 @@ def main():
         if (n500Remote != null) {
             n500Remote.stop();''')
 
-    once(main,'        updateWeatherAqi();\\n        WeatherAirQuality.syncIfDue(this, this::updateWeatherAqi);'.replace("\\n","\n"),
-        '''        updateWeatherAqi();
-        WeatherAirQuality.syncIfDue(this, this::updateWeatherAqi);''') # no-op assertion
-
     assert 'android.intent.category.HOME' not in manifest.read_text(encoding="utf-8")
     assert 'n500Sections.onTileFocus' in main.read_text(encoding="utf-8")
     print("N500 streaming shelves + smart auto-hide integrated safely into Preview.")
