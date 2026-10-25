@@ -27,6 +27,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * N500 content area (experimental non-HOME preview).
@@ -51,7 +53,9 @@ final class N500HomeSections {
     private final LinearLayout shelf;
     private final SharedPreferences prefs;
     private boolean collapsed;
-    private boolean lastWatchReadable;
+
+    private final ExecutorService dataWorker = Executors.newSingleThreadExecutor();
+    private int refreshGeneration;
     private int itemCount;
     private boolean destroyed;
 
@@ -79,16 +83,27 @@ final class N500HomeSections {
 
     void refresh() {
         if (destroyed) return;
-        // Restore header on main-menu return, then refresh shelves. All data
-        // access is guarded; no fake provider entries displayed on error.
-        setCollapsed(false);
-        shelf.removeAllViews();
-        itemCount = 0;
-        lastWatchReadable = false;
-        List<MediaItem> watch = queryPrograms(true);
-        List<MediaItem> suggested = queryPrograms(false);
-        List<MediaItem> recent = loadRecentApps();
-        List<MediaItem> streaming = loadStreamingApps();
+        final int generation = ++refreshGeneration;
+        // Querying a TV content provider can block for many frames on budget
+        // projector hardware. Keep provider + PackageManager work off UI.
+        dataWorker.execute(() -> {
+            final List<MediaItem> watch = queryPrograms(true);
+            final List<MediaItem> suggested = queryPrograms(false);
+            final List<MediaItem> recent = loadRecentApps();
+            final List<MediaItem> streaming = loadStreamingApps();
+            handler.post(() -> {
+                if (destroyed || generation != refreshGeneration) return;
+                shelf.removeAllViews();
+                itemCount = 0;
+                renderShelves(watch, suggested, recent, streaming);
+            });
+        });
+    }
+
+    private void renderShelves(List<MediaItem> watch,
+                              List<MediaItem> suggested,
+                              List<MediaItem> recent,
+                              List<MediaItem> streaming) {
         // Never let four shelves consume the whole Home screen. Default shows
         // at most two compact rows; settings can expand for users who prefer it.
         boolean expanded = prefs.getBoolean("expanded_shelves", false);
@@ -108,7 +123,7 @@ final class N500HomeSections {
         if (prefs.getBoolean(KEY_RECOMMEND, true) && !suggested.isEmpty() && (expanded || visible < 2)) {
             addShelf("RECOMMENDED BY YOUR APPS", suggested, "DISCOVER", 6);
         }
-        shelf.setVisibility(itemCount == 0 ? View.GONE : View.VISIBLE);
+        shelf.setVisibility(itemCount == 0 || collapsed ? View.GONE : View.VISIBLE);
     }
 
     private GradientDrawable panel(int color) {
@@ -252,7 +267,11 @@ final class N500HomeSections {
                 .show();
     }
 
-    void destroy() { destroyed=true; }
+    void destroy() {
+        destroyed=true;
+        refreshGeneration++;
+        dataWorker.shutdownNow();
+    }
 
     private static final class MediaItem {
         final String label,packageName;
@@ -326,7 +345,6 @@ final class N500HomeSections {
                 TvContract.PreviewPrograms.COLUMN_TITLE,
                 TvContract.PreviewPrograms.COLUMN_INTENT_URI
         },null,null,null)) {
-            lastWatchReadable = cursor!=null;
             if(cursor==null)return list;
             int titleIndex=cursor.getColumnIndex(TvContract.PreviewPrograms.COLUMN_TITLE);
             int uriIndex=cursor.getColumnIndex(TvContract.PreviewPrograms.COLUMN_INTENT_URI);
