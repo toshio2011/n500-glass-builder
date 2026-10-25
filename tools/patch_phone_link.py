@@ -30,7 +30,7 @@ def main() -> None:
 
     root = Path(__file__).resolve().parent.parent
     classes = tree / "app/src/main/java/com/gathin/tvhome"
-    for name in ("N500RemoteServer.java", "N500CaptureService.java"):
+    for name in ("N500RemoteServer.java", "N500CaptureService.java", "N500PairingStore.java"):
         destination = classes / name
         if destination.exists():
             raise RuntimeError(f"Refusing to overwrite {destination}")
@@ -82,8 +82,25 @@ def main() -> None:
                 Toast.LENGTH_SHORT).show();
     }
 
+    private void n500RestoreRememberedPhone() {
+        // AndroidKeyStore may be slow on projector hardware; never block UI.
+        // Auto-start occurs only after the owner paired once.
+        new Thread(() -> {
+            if (!N500RemoteServer.hasRememberedPhone(getApplicationContext())) return;
+            N500RemoteServer candidate = new N500RemoteServer(this, handler);
+            if (!candidate.start()) return;
+            handler.post(() -> {
+                if (isFinishing() || isDestroyed() || n500Remote != null) {
+                    candidate.stop();
+                } else {
+                    n500Remote = candidate;
+                }
+            });
+        }, "n500-pairing-restore").start();
+    }
+
     private void showN500PhoneLink() {
-        // Optional, manually started for this preview session; never started at boot.
+        // Never automatically start the server on an unpaired device.
         if (n500Remote == null) {
             n500Remote = new N500RemoteServer(this, handler);
             if (!n500Remote.start()) {
@@ -91,13 +108,17 @@ def main() -> None:
                 n500Remote = null;
                 return;
             }
-        } else {
+        } else if (!n500Remote.isPaired()) {
             n500Remote.rotatePairingCode();
         }
+        String pairingHint = n500Remote.isPaired()
+                ? "\\nPhone remembered! Open Glass TV Remote on your home Wi-Fi to reconnect automatically."
+                + "\\nTo pair another phone, choose Disconnect Phone and reopen Phone Link."
+                : "\\nOne-time pairing PIN: " + n500Remote.pairingCode()
+                + "\\nExpires after 2 minutes";
         String info = "Phone and N500 must be on the same private Wi-Fi."
                 + "\\n\\nAddress: " + n500Remote.address()
-                + "\\nOne-time pairing PIN: " + n500Remote.pairingCode()
-                + "\\nExpires after 2 minutes"
+                + pairingHint
                 + "\\n\\nOpen Glass TV Remote on your phone > Setup > Pair."
                 + "\\n\\nDeveloper preview only: unencrypted LAN. Do not use on public Wi-Fi."
                 + "\\nAndroid will show a separate confirmation for Live View."
@@ -113,7 +134,7 @@ def main() -> None:
                     startService(stop);
                 })
                 .setNegativeButton("Disconnect Phone", (d, w) -> {
-                    n500Remote.stop();
+                    n500Remote.forgetPhone();
                     n500Remote = null;
                 }).create();
         n500PairingDialog.setOnDismissListener(d -> n500PairingDialog = null);
@@ -156,6 +177,12 @@ def main() -> None:
     }
 
     private void showSoundEffectsDialog() {''')
+
+    replace_once(activity,
+        '''        // Silent background update check after 5 seconds on launch''',
+        '''        n500RestoreRememberedPhone();
+
+        // Silent background update check after 5 seconds on launch''')
 
     replace_once(activity,
         '''    protected void onDestroy() {
