@@ -57,6 +57,7 @@ def main() -> None:
         "    private TextView weatherAirQualityView;",
         '''    private TextView weatherAirQualityView;
     private N500RemoteServer n500Remote;
+    private AlertDialog n500PairingDialog;
     private static final int N500_SCREEN_CAPTURE_REQUEST = 7513;''')
 
     replace_once(activity,
@@ -71,7 +72,17 @@ def main() -> None:
 
     replace_once(activity,
         "    private void showSoundEffectsDialog() {",
-        '''    private void showN500PhoneLink() {
+        '''    /** Restore Preview's focus once the phone has successfully paired. */
+    public void n500PairingCompleted() {
+        if (n500PairingDialog != null) {
+            n500PairingDialog.dismiss();
+            n500PairingDialog = null;
+        }
+        Toast.makeText(this, "Phone paired. Remote controls ready in Preview.",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void showN500PhoneLink() {
         // Optional, manually started for this preview session; never started at boot.
         if (n500Remote == null) {
             n500Remote = new N500RemoteServer(this, handler);
@@ -91,7 +102,8 @@ def main() -> None:
                 + "\\n\\nDeveloper preview only: unencrypted LAN. Do not use on public Wi-Fi."
                 + "\\nAndroid will show a separate confirmation for Live View."
                 + "\\nProtected video and HDMI may appear blank.";
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        if (n500PairingDialog != null) n500PairingDialog.dismiss();
+        n500PairingDialog = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle("N500 Phone Link")
                 .setMessage(info)
                 .setPositiveButton("Close", (d, w) -> d.dismiss())
@@ -103,7 +115,9 @@ def main() -> None:
                 .setNegativeButton("Disconnect Phone", (d, w) -> {
                     n500Remote.stop();
                     n500Remote = null;
-                }).show();
+                }).create();
+        n500PairingDialog.setOnDismissListener(d -> n500PairingDialog = null);
+        n500PairingDialog.show();
     }
 
     /** Only called from the manually enabled, paired local phone connection. */
@@ -147,6 +161,7 @@ def main() -> None:
         '''    protected void onDestroy() {
         super.onDestroy();''',
         '''    protected void onDestroy() {
+        if (n500PairingDialog != null) n500PairingDialog.dismiss();
         if (n500Remote != null) {
             n500Remote.stop();
             n500Remote = null;
