@@ -1,5 +1,7 @@
 # N500 Glass TV Home — safe builder
 
+**[Master development roadmap (25 October 2026)](docs/ROADMAP_2026-10-25.md)** — configurable weather, universal streaming discovery, remote + phone controls, integrated multi-view experiments and safe upgrade milestones.
+
 Builds [Glass TV Home](https://github.com/aqmangge/glass-tv-home) as a **separate app** for an N500 Android projector, so it can be tested without uninstalling the working [CleanYourTV](https://github.com/Gathin23/cleanyourtv) launcher.
 
 ## What this does
