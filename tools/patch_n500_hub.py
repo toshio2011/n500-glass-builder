@@ -80,8 +80,9 @@ def main():
     once(main,'''        if (movingPos < 0) {
             if (code == KeyEvent.KEYCODE_BACK''',
         '''        if (movingPos < 0) {
-            if (n500Hub != null && (code == KeyEvent.KEYCODE_BACK
-                    || code == KeyEvent.KEYCODE_ESCAPE) && n500Hub.backHome()) {
+            if (n500Hub != null && n500Hub.isAppsPage()
+                    && (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_ESCAPE)) {
+                if (event.getAction() == KeyEvent.ACTION_UP) n500Hub.backHome();
                 return true;
             }
             if (code == KeyEvent.KEYCODE_BACK''')
@@ -102,14 +103,6 @@ def main():
         '''                if (n500Hub != null) n500Hub.restoreFocus();
                 else focusTile(lastFocused % COLUMNS);
                 return true;''')
-    once(main,'''            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                focusTile(lastFocused % COLUMNS);''',
-        '''            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                if (n500Hub != null) {
-                    n500Hub.restoreFocus();
-                    return true;
-                }
-                focusTile(lastFocused % COLUMNS);''')
 
     # The old tile grid must never draw an attention prompt over this Home.
     once(main,'''    private void showCardPrompt() {''',
