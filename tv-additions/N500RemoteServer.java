@@ -224,7 +224,51 @@ public final class N500RemoteServer {
             }
 
             if (!authorized(authorization)) { json(out,401,"Pair with projector first"); return; }
-            if ("GET".equals(method) && "/v1/status".equals(path)) {
+            if ("GET".equals(method) && "/v1/apps".equals(path)) {
+                MainActivity activity=target.get();
+                if (activity==null) { json(out,409,"Projector Preview is closed"); return; }
+                android.content.pm.PackageManager pm=activity.getPackageManager();
+                org.json.JSONArray found=new org.json.JSONArray();
+                java.util.HashSet<String> seen=new java.util.HashSet<>();
+                for (String category:new String[]{Intent.CATEGORY_LEANBACK_LAUNCHER,Intent.CATEGORY_LAUNCHER}) {
+                    Intent query=new Intent(Intent.ACTION_MAIN).addCategory(category);
+                    for(android.content.pm.ResolveInfo app:pm.queryIntentActivities(query,0)) {
+                        if(app.activityInfo==null) continue;
+                        String pkg=app.activityInfo.packageName;
+                        if(!seen.add(pkg) || pkg.equals(activity.getPackageName()))continue;
+                        String label=String.valueOf(app.loadLabel(pm));
+                        org.json.JSONObject record=new org.json.JSONObject();
+                        record.put("label",label); record.put("package",pkg);
+                        found.put(record);
+                        if(found.length()>=90)break;
+                    }
+                }
+                org.json.JSONObject response=new org.json.JSONObject();
+                response.put("apps",found);
+                reply(out,200,"application/json; charset=UTF-8",
+                        response.toString().getBytes(StandardCharsets.UTF_8));
+            } else if ("POST".equals(method) && "/v1/launch".equals(path)) {
+                MainActivity activity=target.get();
+                if(activity==null) { json(out,409,"Projector Preview is closed"); return; }
+                String pkg=new org.json.JSONObject(body).optString("package","");
+                if(!pkg.matches("[a-zA-Z0-9_.]{3,180}") || pkg.equals(activity.getPackageName())) {
+                    json(out,400,"Invalid application");return;
+                }
+                // Only launch apps Android itself advertises as user-launchable.
+                android.content.pm.PackageManager pm=activity.getPackageManager();
+                Intent launch=pm.getLeanbackLaunchIntentForPackage(pkg);
+                if(launch==null)launch=pm.getLaunchIntentForPackage(pkg);
+                if(launch==null) { json(out,404,"App not launchable or not installed"); return; }
+                final Intent safe=launch;
+                main.post(() -> {
+                    try {
+                        safe.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        activity.startActivity(safe);
+                        RecentAppsManager.recordAppLaunch(activity,pkg);
+                    } catch(Exception error){ Log.w(TAG,"App launch failed",error); }
+                });
+                json(out,200,"Opening "+pkg+" on projector");
+            } else             if ("GET".equals(method) && "/v1/status".equals(path)) {
                 JSONObject j=new JSONObject();
                 j.put("name","Glass TV N500 Preview");
                 j.put("version","0.1-dev");
