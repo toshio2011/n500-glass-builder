@@ -55,7 +55,8 @@ jobs:
           aapt_bin="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -n 1)"
           test -n "$aapt_bin"
           "$aapt_bin" dump badging "$apk" | grep -F "package: name='com.n500.remote'"
-          "$aapt_bin" dump badging "$apk" | grep -F "versionName='0.1.0-dev'"
+          "$aapt_bin" dump badging "$apk" | grep -F "versionName='0.3.0-dev'"
+          "$aapt_bin" dump badging "$apk" | grep -F "versionCode='2'"
           cp "$apk" n500-glass-tv-remote-phone.apk
           sha256sum n500-glass-tv-remote-phone.apk > n500-glass-tv-remote-phone.sha256
       - name: Upload phone APK
