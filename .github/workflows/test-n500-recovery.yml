@@ -1,0 +1,38 @@
+name: Test N500 Recovery Tool
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/test-n500-recovery.yml"
+      - "tools/n500-recovery.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax and non-destructive exit
+        run: |
+          set -euo pipefail
+          bash -n tools/n500-recovery.sh
+          printf '5\n' | bash tools/n500-recovery.sh menu
+          if bash tools/n500-recovery.sh unsupported >/dev/null 2>&1; then
+            echo "Unknown option incorrectly succeeded" >&2
+            exit 1
+          fi
+      - name: Download EXACT original release APK and confirm SHA256
+        env:
+          N500_RECOVERY_DIR: ${{ runner.temp }}/n500-recovery-test
+        run: |
+          set -euo pipefail
+          bash tools/n500-recovery.sh backup
+          test -s "$N500_RECOVERY_DIR/n500-glass-tv-v1.0.0-known-good.apk"
+          sha256sum "$N500_RECOVERY_DIR/n500-glass-tv-v1.0.0-known-good.apk"
+          bash tools/n500-recovery.sh backup
+          echo "PASS: repeated backup operation uses verified local APK."
