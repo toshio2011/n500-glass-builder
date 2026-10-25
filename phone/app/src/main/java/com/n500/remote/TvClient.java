@@ -47,6 +47,13 @@ final class TvClient {
         JSONObject body = new JSONObject(); body.put("key", name);
         return new JSONObject(new String(request("POST", "/v1/key", body, true), StandardCharsets.UTF_8));
     }
+    JSONObject apps() throws Exception {
+        return new JSONObject(new String(request("GET", "/v1/apps", null, true), StandardCharsets.UTF_8));
+    }
+    JSONObject launch(String pkg) throws Exception {
+        JSONObject body = new JSONObject(); body.put("package", pkg);
+        return new JSONObject(new String(request("POST", "/v1/launch", body, true), StandardCharsets.UTF_8));
+    }
     JSONObject startView() throws Exception {
         return new JSONObject(new String(request("POST", "/v1/live/start", new JSONObject(), true), StandardCharsets.UTF_8));
     }
