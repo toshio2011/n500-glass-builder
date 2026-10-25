@@ -26,6 +26,8 @@ import org.json.JSONObject;
 import org.json.JSONArray;
 import android.widget.FrameLayout;
 import android.graphics.drawable.Drawable;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,6 +57,7 @@ public final class MainActivity extends Activity {
     private volatile boolean viewActive;
     private volatile int frameGeneration;
     private boolean destroyed;
+    private volatile boolean reconnecting;
 
     interface Task { String run() throws Exception; }
 
@@ -63,6 +66,11 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(9, 15, 28));
         getWindow().setNavigationBarColor(Color.rgb(9, 15, 28));
         buildUI();
+    }
+
+    @Override protected void onResume() {
+        super.onResume();
+        reconnectRememberedPhone();
     }
 
     private int dp(float size) { return Math.round(size * getResources().getDisplayMetrics().density); }
@@ -327,8 +335,10 @@ public final class MainActivity extends Activity {
         add(content,disconnect);
         disconnect.setOnClickListener(v -> {
             stopLive();
-            if(tv != null)tv.clearPairing();
-            connection.setText("Not paired");
+            if(tv != null) tv.clearPairing();
+            tv = null;
+            N500PairingStore.clear(getApplicationContext());
+            connection.setText("Pairing forgotten • your N500 can revoke the phone from Phone Link");
             Toast.makeText(this,"Disconnected",Toast.LENGTH_SHORT).show();
         });
         gap(content,19);
@@ -387,6 +397,58 @@ public final class MainActivity extends Activity {
             });
         });
     }
+    /**
+     * Reconnect automatically when phone Remote is opened / brought forward.
+     * No repeated retries in background; keep saved credentials on Wi-Fi loss.
+     * Invalid server token triggers explicit re-pair, rather than trying stale PIN.
+     */
+    private void reconnectRememberedPhone() {
+        if (destroyed || reconnecting) return;
+        String savedAddress = N500PairingStore.readAddress(getApplicationContext());
+        if (savedAddress.isEmpty()) return;
+
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        NetworkCapabilities network = cm == null ? null :
+                cm.getNetworkCapabilities(cm.getActiveNetwork());
+        if (network == null || !(network.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                || network.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))) {
+            connection.setText("N500 remembered • connect to your home Wi-Fi");
+            return;
+        }
+        reconnecting = true;
+        connection.setText("Reconnecting to remembered N500…");
+        io.execute(() -> {
+            String message;
+            try {
+                String savedToken=N500PairingStore.readToken(getApplicationContext());
+                if (savedToken == null) throw new IllegalStateException(
+                        "Remembered key unavailable. Pair once more.");
+                TvClient restored=TvClient.restore(savedAddress,savedToken);
+                JSONObject status=restored.status();
+                tv=restored;
+                message="Connected automatically • " + status.optString("name","N500");
+            } catch(Exception e) {
+                String error=e.getMessage()==null ? "Projector offline" : e.getMessage();
+                if(error.contains("HTTP 401")) {
+                    N500PairingStore.clear(getApplicationContext());
+                    tv=null;
+                    message="Previous pairing expired • open N500 Phone Link to pair again";
+                } else {
+                    // Projector Preview might not be open or Wi-Fi might be sleeping.
+                    // Never erase a valid saved token merely because of network loss.
+                    message="N500 remembered • offline for now (open Preview to reconnect)";
+                }
+            }
+            final String result=message;
+            ui.post(() -> {
+                reconnecting=false;
+                if(destroyed)return;
+                connection.setText(result);
+                if(activeTab==2 && tv!=null && tv.isPaired()) showTab(2);
+            });
+        });
+    }
+
     private void showPairing() {
         LinearLayout fields = linear(false);
         pad(fields, 12);
@@ -413,9 +475,13 @@ public final class MainActivity extends Activity {
                     task("Pairing…", () -> {
                         TvClient candidate = new TvClient(host);
                         candidate.pair(code);
+                        // Store a token only inside encrypted AndroidKeyStore data.
+                        // Keeping a projector IP in plaintext is fine, not the token.
+                        N500PairingStore.save(getApplicationContext(),
+                                candidate.address(), candidate.pairingToken());
                         tv = candidate;
                         getPreferences(MODE_PRIVATE).edit().putString("ip", host).apply();
-                        return "Paired to " + candidate.address();
+                        return "Paired and remembered • " + candidate.address();
                     });
                 })
                 .setNegativeButton("Cancel", null).show();
