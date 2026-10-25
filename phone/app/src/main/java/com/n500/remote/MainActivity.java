@@ -474,14 +474,21 @@ public final class MainActivity extends Activity {
                     String code = pin.getText().toString().trim();
                     task("Pairing…", () -> {
                         TvClient candidate = new TvClient(host);
-                        candidate.pair(code);
-                        // Store a token only inside encrypted AndroidKeyStore data.
-                        // Keeping a projector IP in plaintext is fine, not the token.
-                        N500PairingStore.save(getApplicationContext(),
-                                candidate.address(), candidate.pairingToken());
+                        JSONObject response=candidate.pair(code);
+                        // Never store the token in plaintext, even if Keystore fails.
+                        boolean phoneRemembered=true;
+                        try {
+                            N500PairingStore.save(getApplicationContext(),
+                                    candidate.address(), candidate.pairingToken());
+                        } catch(Exception secureError) {
+                            phoneRemembered=false;
+                        }
                         tv = candidate;
                         getPreferences(MODE_PRIVATE).edit().putString("ip", host).apply();
-                        return "Paired and remembered • " + candidate.address();
+                        boolean tvRemembered=response.optBoolean("remembered",false);
+                        return phoneRemembered && tvRemembered
+                                ? "Paired and remembered • " + candidate.address()
+                                : "Paired for this session • secure memory unavailable";
                     });
                 })
                 .setNegativeButton("Cancel", null).show();
